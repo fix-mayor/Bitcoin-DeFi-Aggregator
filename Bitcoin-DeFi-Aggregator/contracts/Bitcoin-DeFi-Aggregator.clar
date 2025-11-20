@@ -307,3 +307,119 @@
     none
   )
 )
+
+;; Execute route across protocols
+(define-private (execute-route (from-token uint) (to-token uint) (amount uint) (route (list 10 uint)))
+  (let (
+    (protocol-id (unwrap! (element-at route u0) err-route-not-found))
+    (protocol (unwrap! (map-get? protocols { protocol-id: protocol-id }) err-protocol-not-whitelisted))
+  )
+    (asserts! (get enabled protocol) err-protocol-disabled)
+    (ok (simulate-swap from-token to-token amount protocol-id))
+  )
+)
+
+;; Update statistics after a swap
+(define-private (update-swap-stats (from-token uint) (to-token uint) (input-amount uint) (output-amount uint))
+  (let (
+    (protocol-id (unwrap-panic (element-at (get best-route (unwrap-panic (map-get? route-cache 
+      { from-token: from-token, to-token: to-token, amount: input-amount }))) u0)))
+    (protocol (unwrap-panic (map-get? protocols { protocol-id: protocol-id })))
+    (current-volume (get volume-24h protocol))
+  )
+    (map-set protocols
+      { protocol-id: protocol-id }
+      (merge protocol { volume-24h: (+ current-volume input-amount) })
+    )
+    true
+  )
+)
+
+;; Rebalance a strategy (admin function)
+(define-public (rebalance-strategy (strategy-id uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (not (var-get contract-paused)) (err u116))
+    
+    (let ((strategy (unwrap! (map-get? yield-strategies { strategy-id: strategy-id }) (err u115))))
+      ;; In a real implementation, this would:
+      ;; 1. Analyze current allocations across protocols
+      ;; 2. Calculate optimal allocations based on current yields and risk parameters
+      ;; 3. Execute transactions to rebalance funds
+      
+      ;; For this example, we'll just return success
+      (ok true)
+    )
+  )
+)
+
+
+;; Data structure for batch swap operations
+(define-data-var batch-id uint u0)
+
+(define-map batch-operations
+  { batch-id: uint, operation-id: uint }
+  {
+    from-token: uint,
+    to-token: uint,
+    amount: uint,
+    min-output: uint
+  }
+)
+
+;; Create a new batch
+(define-public (create-batch)
+  (let ((current-batch-id (var-get batch-id)))
+    (var-set batch-id (+ current-batch-id u1))
+    (ok current-batch-id)
+  )
+)
+
+;; Get risk score for a protocol
+(define-read-only (get-protocol-risk-score (protocol-id uint))
+  (let ((protocol (map-get? protocols { protocol-id: protocol-id })))
+    (if (is-some protocol)
+      (ok (get risk-score (unwrap-panic protocol)))
+      err-protocol-not-whitelisted
+    )
+  )
+)
+
+;; Calculate weighted risk for user's portfolio
+(define-read-only (calculate-user-portfolio-risk (user principal))
+  (ok u50)  ;; Simplified implementation - would calculate based on user positions
+)
+
+;; Get protocol statistics
+(define-read-only (get-protocol-stats (protocol-id uint))
+  (let ((protocol (map-get? protocols { protocol-id: protocol-id })))
+    (if (is-some protocol)
+      (ok (unwrap-panic protocol))
+      err-protocol-not-whitelisted
+    )
+  )
+)
+
+;; Get user positions across all protocols
+(define-read-only (get-user-positions (user principal))
+  (ok true)  ;; Simplified - would return comprehensive user position data
+)
+
+;; Get user strategy allocations
+(define-read-only (get-user-strategy-allocations (user principal))
+  (ok true)  ;; Simplified - would return user's strategy allocations
+)
+
+(define-constant err-flash-loan-not-repaid (err u123))
+
+(define-map flash-loans
+  { loan-id: uint }
+  {
+    borrower: principal,
+    token-id: uint,
+    amount: uint,
+    fee: uint,
+    block-borrowed: uint,
+    repaid: bool
+  }
+)
