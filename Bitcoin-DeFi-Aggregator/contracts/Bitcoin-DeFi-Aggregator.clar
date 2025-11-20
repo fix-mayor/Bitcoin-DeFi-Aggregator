@@ -238,3 +238,72 @@
     )
   )
 )
+
+(define-public (toggle-strategy (strategy-id uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    
+    (let ((strategy (unwrap! (map-get? yield-strategies { strategy-id: strategy-id }) (err u115))))
+      (map-set yield-strategies
+        { strategy-id: strategy-id }
+        (merge strategy { enabled: (not (get enabled strategy)) })
+      )
+      (ok (not (get enabled strategy)))
+    )
+  )
+)
+
+(define-public (update-protocol-yield (protocol-id uint) (new-yield uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (is-some (map-get? protocols { protocol-id: protocol-id })) err-protocol-not-whitelisted)
+    
+    (let ((protocol (unwrap-panic (map-get? protocols { protocol-id: protocol-id }))))
+      (map-set protocols
+        { protocol-id: protocol-id }
+        (merge protocol { current-yield: new-yield })
+      )
+      (ok new-yield)
+    )
+  )
+)
+
+(define-public (emergency-pause)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set contract-paused true)
+    (ok true)
+  )
+)
+
+(define-public (emergency-unpause)
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (var-set contract-paused false)
+    (ok true)
+  )
+)
+
+;; Simulate result from a protocol
+(define-private (simulate-swap (from-token uint) (to-token uint) (amount uint) (protocol-id uint))
+  (let (
+    (protocol (unwrap-panic (map-get? protocols { protocol-id: protocol-id })))
+    (liquidity (get liquidity protocol))
+    (fee-rate (var-get protocol-fee-bps))
+  )
+    (if (< liquidity (* amount u10))
+      ;; High slippage if liquidity is low
+      (/ (* amount u95) u100)
+      ;; Lower slippage for high liquidity
+      (/ (* amount (- u10000 fee-rate)) u10000)
+    )
+  )
+)
+
+;; Find a protocol that supports the given token pair
+(define-private (find-protocol-for-pair (from-token uint) (to-token uint))
+  (if (is-some (map-get? protocols { protocol-id: u1 }))
+    (some u1)
+    none
+  )
+)
